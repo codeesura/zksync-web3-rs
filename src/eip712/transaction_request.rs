@@ -172,49 +172,78 @@ impl Eip712TransactionRequest {
         self.rlp(Some(signature))
     }
 
-    pub fn rlp(&self, signature: Option<Signature>) -> Result<Bytes, Eip712Error> {
-        let mut stream = RlpStream::new();
-        stream.begin_unbounded_list();
+pub fn rlp(&self, signature: Option<Signature>) -> Result<Bytes, Eip712Error> {
+    let mut stream = RlpStream::new();
+    stream.begin_unbounded_list();
 
-        // 0
-        stream.append(&self.nonce);
-        // 1
-        stream.append(&self.max_priority_fee_per_gas);
-        // 2
-        rlp_append_option(&mut stream, self.max_fee_per_gas);
-        // 3 (supped to be gas)
-        rlp_append_option(&mut stream, self.gas_limit);
-        // 4
-        stream.append(&self.to);
-        // 5
-        stream.append(&self.value);
-        // 6
-        stream.append(&self.data.0);
-        // 7
-        stream.append(&self.chain_id);
-        // 8
-        stream.append(&"");
-        // 9
-        stream.append(&"");
-        // 10
-        stream.append(&self.chain_id);
-        // 11
-        stream.append(&self.from);
-        // 12, 13, 14, 15
-        if self.custom_data.custom_signature.clone().is_some() {
-            self.custom_data.rlp_append(&mut stream);
-        } else if let Some(signature) = signature {
-            let tx = self.clone().custom_data(
-                self.clone()
-                    .custom_data
-                    .custom_signature(signature.to_vec()),
-            );
-            tx.custom_data.rlp_append(&mut stream);
-        } else {
-            return Err(Eip712Error::Message("No signature provided".to_owned()));
+    // 0
+    stream.append(&self.nonce);
+    // 1
+    stream.append(&self.max_priority_fee_per_gas);
+    // 2
+    if let Some(max_fee_per_gas) = self.max_fee_per_gas {
+        stream.append(&max_fee_per_gas);
+    } else {
+        stream.append_empty_data();
+    }
+    // 3
+    if let Some(gas_limit) = self.gas_limit {
+        stream.append(&gas_limit);
+    } else {
+        stream.append_empty_data();
+    }
+    // 4
+    stream.append(&self.to);
+    // 5
+    stream.append(&self.value);
+    // 6
+    stream.append(&self.data.0);
+    // 7
+    stream.append(&self.chain_id);
+    // 8
+    stream.append_empty_data();
+    // 9
+    stream.append_empty_data();
+    // 10
+    stream.append(&self.chain_id);
+    // 11
+    stream.append(&self.from);
+    
+    // Custom data (12, 13, 14, 15)
+    if self.custom_data.custom_signature.clone().is_some() {
+        self.custom_data.rlp_append(&mut stream);
+    } else if let Some(signature) = signature {
+        let tx = self.clone().custom_data(
+            self.clone()
+                .custom_data
+                .custom_signature(signature.to_vec()),
+        );
+        tx.custom_data.rlp_append(&mut stream);
+    } else {
+        return Err(Eip712Error::Message("No signature provided".to_owned()));
+    }
+
+    stream.append(&self.custom_data.gas_per_pubdata.unwrap_or(DEFAULT_GAS_PER_PUBDATA_LIMIT));
+    stream.append_list::<_, Vec<_>>(self.custom_data.factory_deps.iter().map(|dep| ethers::hex::encode(dep)).collect::<Vec<_>>().as_slice());
+    if let Some(custom_signature) = &self.custom_data.custom_signature {
+        if custom_signature.is_empty() {
+            return Err(Eip712Error::Message("Empty signatures are not supported".to_owned()));
         }
-        stream.finalize_unbounded_list();
-        Ok(stream.out().freeze().into())
+        stream.append(&custom_signature);
+    } else {
+        stream.append_empty_data();
+    }
+
+    if let Some(paymaster_params) = &self.custom_data.paymaster_params {
+        stream.begin_list(2);
+        stream.append(&paymaster_params.paymaster);
+        stream.append(&ethers::hex::encode(&paymaster_params.paymaster_input));
+    } else {
+        stream.begin_list(0);
+    }
+
+    stream.finalize_unbounded_list();
+    Ok(stream.out().freeze().into())
     }
 }
 
