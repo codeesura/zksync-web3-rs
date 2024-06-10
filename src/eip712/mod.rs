@@ -56,6 +56,6 @@ where
     if let Some(v) = value {
         stream.append(&v);
     } else {
-        stream.append(&"");
+        stream.append_empty_data();
     }
 }
