@@ -28,6 +28,10 @@ impl Encodable for PaymasterParams {
     fn rlp_append(&self, stream: &mut ethers::utils::rlp::RlpStream) {
         stream.begin_list(2);
         rlp_append_option(stream, self.paymaster);
-        rlp_append_option(stream, self.paymaster_input.clone().map(|v| v.to_vec()));
+        if let Some(ref input) = self.paymaster_input {
+            rlp_append_option(stream, Some(input.to_vec()));
+        } else {
+            rlp_append_option::<Vec<u8>>(stream, None);
+        }
     }
 }
